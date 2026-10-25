@@ -1,0 +1,4 @@
+# pnpm 11+: разрешение postinstall-скриптов конкретных зависимостей
+allowBuilds:
+  esbuild: true
+  vue-demi: true
