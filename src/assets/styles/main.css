@@ -60,6 +60,11 @@ html, body {
   bottom: 0;
   padding: 0 12px calc(env(safe-area-inset-bottom) + 12px);
 }
+/* Панель HUD прозрачна для кликов (чтобы доску можно было вращать и под ней),
+   но интерактивные элементы возвращают себе события — иначе кнопки «мёртвые». */
+.hud button {
+  pointer-events: auto;
+}
 
 .row {
   display: flex;
