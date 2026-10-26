@@ -453,6 +453,138 @@ export function posterTexture(): THREE.CanvasTexture {
   return createWallScreen().texture;
 }
 
+/** Фоновый холст для 3D-картины с логотипом GitHub (звёздная сеть коммитов, неоновое гало и сетка контрибуций). */
+export function githubArtTexture(): THREE.CanvasTexture {
+  const W = 512;
+  const H = 612;
+  const [c, x] = makeCanvas(W, H);
+
+  // 1. Глубокий фирменный фон GitHub Dark (#0d1117 -> #090d13)
+  const bg = x.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#0d1117');
+  bg.addColorStop(0.55, '#161b22');
+  bg.addColorStop(1, '#090c10');
+  x.fillStyle = bg;
+  x.fillRect(0, 0, W, H);
+
+  // 2. Радиальное свечение позади центрального 3D-медальона Octocat
+  const halo1 = x.createRadialGradient(W / 2, 248, 30, W / 2, 248, 230);
+  halo1.addColorStop(0, 'rgba(88, 166, 255, 0.30)');
+  halo1.addColorStop(0.5, 'rgba(139, 92, 246, 0.14)');
+  halo1.addColorStop(1, 'rgba(13, 17, 23, 0)');
+  x.fillStyle = halo1;
+  x.fillRect(0, 0, W, H);
+
+  // 3. Декоративная сетка репозитория и ветки git-графа на фоне
+  x.strokeStyle = 'rgba(48, 54, 61, 0.45)';
+  x.lineWidth = 1;
+  for (let gx = 32; gx < W; gx += 32) {
+    x.beginPath();
+    x.moveTo(gx, 20);
+    x.lineTo(gx, H - 20);
+    x.stroke();
+  }
+  for (let gy = 32; gy < H; gy += 32) {
+    x.beginPath();
+    x.moveTo(20, gy);
+    x.lineTo(W - 20, gy);
+    x.stroke();
+  }
+
+  // Линии веток (git graph)
+  const branches: Array<{ color: string; pts: Array<[number, number]> }> = [
+    {
+      color: 'rgba(88, 166, 255, 0.28)',
+      pts: [[56, 95], [56, 210], [88, 250], [88, 390], [56, 430]],
+    },
+    {
+      color: 'rgba(163, 113, 247, 0.26)',
+      pts: [[456, 105], [456, 225], [424, 265], [424, 385], [456, 425]],
+    },
+  ];
+  for (const br of branches) {
+    x.strokeStyle = br.color;
+    x.lineWidth = 2.5;
+    x.beginPath();
+    br.pts.forEach(([px, py], i) => (i === 0 ? x.moveTo(px, py) : x.lineTo(px, py)));
+    x.stroke();
+    for (const [px, py] of br.pts) {
+      x.fillStyle = '#0d1117';
+      x.beginPath();
+      x.arc(px, py, 5, 0, Math.PI * 2);
+      x.fill();
+      x.stroke();
+    }
+  }
+
+  // 4. Внутренняя рамка галерейного постера
+  x.strokeStyle = '#30363d';
+  x.lineWidth = 4;
+  x.strokeRect(14, 14, W - 28, H - 28);
+
+  x.strokeStyle = 'rgba(88, 166, 255, 0.28)';
+  x.lineWidth = 1.5;
+  x.strokeRect(22, 22, W - 44, H - 44);
+
+  // 5. Верхний бейдж
+  x.fillStyle = '#8b949e';
+  x.font = '600 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+  x.textAlign = 'center';
+  x.fillText('OPEN SOURCE · 3D EDITION', W / 2, 52);
+
+  // 6. Концентрические кольца вокруг 3D-логотипа
+  x.strokeStyle = 'rgba(88, 166, 255, 0.22)';
+  x.lineWidth = 1.5;
+  x.beginPath();
+  x.arc(W / 2, 248, 168, 0, Math.PI * 2);
+  x.stroke();
+
+  x.strokeStyle = 'rgba(163, 113, 247, 0.18)';
+  x.setLineDash([6, 6]);
+  x.beginPath();
+  x.arc(W / 2, 248, 182, 0, Math.PI * 2);
+  x.stroke();
+  x.setLineDash([]);
+
+  // 7. Типографика GitHub под медальоном
+  x.fillStyle = '#f0f6fc';
+  x.font = 'bold 44px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  x.fillText('GitHub', W / 2, 476);
+
+  x.fillStyle = '#58a6ff';
+  x.font = '600 13px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+  x.fillText('WHERE THE WORLD BUILDS SOFTWARE', W / 2, 502);
+
+  // 8. Полоса календаря контрибуций (Contribution Graph) в нижней части холста
+  const cols = 22;
+  const rows = 4;
+  const cell = 13;
+  const gap = 4;
+  const gridW = cols * (cell + gap) - gap;
+  const startX = Math.round((W - gridW) / 2);
+  const startY = 522;
+  const greens = ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'];
+
+  for (let col = 0; col < cols; col++) {
+    for (let row = 0; row < rows; row++) {
+      // Детерминированный красивый узор активности
+      const seed = (col * 7 + row * 13 + col * row) % 11;
+      const level = seed === 0 ? 0 : seed < 3 ? 1 : seed < 6 ? 2 : seed < 9 ? 3 : 4;
+      x.fillStyle = greens[level];
+      const rx = startX + col * (cell + gap);
+      const ry = startY + row * (cell + gap);
+      x.fillRect(rx, ry, cell, cell);
+      x.strokeStyle = 'rgba(255,255,255,0.06)';
+      x.lineWidth = 1;
+      x.strokeRect(rx, ry, cell, cell);
+    }
+  }
+
+  x.textAlign = 'left';
+  grain(x, W, H, 0.015, 2200);
+  return finalize(c, 8);
+}
+
 /** Окно: ночное небо, луна с гало, звёзды, переплёт. */
 export function windowTexture(): THREE.CanvasTexture {
   const [c, x] = makeCanvas(256, 448);

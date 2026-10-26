@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { createGame, type Board, type Move, type Point } from '@/core';
 import { buildMagicalCat } from './cat';
-import { createWallScreen, wallpaperTexture, windowTexture, woodTexture } from './textures';
+import { createWallScreen, githubArtTexture, wallpaperTexture, windowTexture, woodTexture } from './textures';
 
 export interface RoomHandle {
   update(dt: number, t: number): void;
@@ -26,6 +26,32 @@ function onWall(theta: number, radius = R - 0.12): { pos: THREE.Vector3; ry: num
   const x = Math.sin(theta) * radius;
   const z = Math.cos(theta) * radius;
   return { pos: new THREE.Vector3(x, 0, z), ry: theta + Math.PI };
+}
+
+/** 2D-контур фирменного силуэта GitHub Octocat (голова с ушками + торс) для 3D-экструзии. */
+function makeOctocatSilhouetteShape(): THREE.Shape {
+  const s = new THREE.Shape();
+  // Нижний срез торса по центру
+  s.moveTo(0, -0.78);
+  s.lineTo(0.23, -0.78);
+  // Правый бок торса и плечо к шее
+  s.bezierCurveTo(0.25, -0.46, 0.34, -0.22, 0.21, -0.07);
+  // Правая щека головы Octocat
+  s.bezierCurveTo(0.50, -0.05, 0.62, 0.14, 0.54, 0.42);
+  // Правое кошачье ушко (внешняя грань -> острый кончик -> внутренняя грань)
+  s.quadraticCurveTo(0.57, 0.63, 0.48, 0.78);
+  s.quadraticCurveTo(0.35, 0.70, 0.24, 0.56);
+  // Макушка лба между ушками
+  s.bezierCurveTo(0.10, 0.61, -0.10, 0.61, -0.24, 0.56);
+  // Левое кошачье ушко
+  s.quadraticCurveTo(-0.35, 0.70, -0.48, 0.78);
+  s.quadraticCurveTo(-0.57, 0.63, -0.54, 0.42);
+  // Левая щека головы к шее
+  s.bezierCurveTo(-0.62, 0.14, -0.50, -0.05, -0.21, -0.07);
+  // Левое плечо и торс к основанию
+  s.bezierCurveTo(-0.34, -0.22, -0.25, -0.46, -0.23, -0.78);
+  s.closePath();
+  return s;
 }
 
 export function buildRoom(scene: THREE.Scene): RoomHandle {
@@ -164,6 +190,216 @@ export function buildRoom(scene: THREE.Scene): RoomHandle {
   display.rotation.y = art.ry;
   roomGroup.add(display);
 
+  /* --- 3D-картина с объёмным барельефом логотипа GitHub на противоположной от телевизора стене --- */
+  const ghTheta = artTheta + Math.PI;
+  const ghWall = onWall(ghTheta);
+  const ghGroup = new THREE.Group();
+  ghGroup.position.copy(ghWall.pos);
+  ghGroup.position.y = 1.6;
+  ghGroup.rotation.y = ghWall.ry;
+  roomGroup.add(ghGroup);
+
+  // 1. Глубокая галерейная 3D-рама со скошенным металлическим кантом
+  const ghFrameOuterMat = track(
+    new THREE.MeshStandardMaterial({ color: '#0b1017', roughness: 0.38, metalness: 0.72 }),
+  );
+  const ghFrameInnerMat = track(
+    new THREE.MeshStandardMaterial({
+      color: '#1f2937',
+      emissive: '#38bdf8',
+      emissiveIntensity: 0.25,
+      roughness: 0.28,
+      metalness: 0.8,
+    }),
+  );
+
+  // Задняя плита картины
+  const ghBackplate = new THREE.Mesh(track(new THREE.BoxGeometry(3.38, 4.0, 0.08)), ghFrameOuterMat);
+  ghBackplate.castShadow = true;
+  ghBackplate.receiveShadow = true;
+  ghGroup.add(ghBackplate);
+
+  // Объёмные бортики багета (верх, низ, лево, право) — создают реальную глубину 3D-картины
+  const frameBars: Array<[number, number, number, number, number, number]> = [
+    [3.44, 0.14, 0.22, 0, 1.94, 0.07],
+    [3.44, 0.14, 0.22, 0, -1.94, 0.07],
+    [0.14, 3.74, 0.22, -1.65, 0, 0.07],
+    [0.14, 3.74, 0.22, 1.65, 0, 0.07],
+  ];
+  for (const [bw, bh, bd, bx, by, bz] of frameBars) {
+    const bar = new THREE.Mesh(track(new THREE.BoxGeometry(bw, bh, bd)), ghFrameOuterMat);
+    bar.position.set(bx, by, bz);
+    bar.castShadow = true;
+    ghGroup.add(bar);
+  }
+
+  // Внутренний светящийся кант рамы
+  const innerBars: Array<[number, number, number, number, number, number]> = [
+    [3.16, 0.035, 0.14, 0, 1.855, 0.06],
+    [3.16, 0.035, 0.14, 0, -1.855, 0.06],
+    [0.035, 3.68, 0.14, -1.565, 0, 0.06],
+    [0.035, 3.68, 0.14, 1.565, 0, 0.06],
+  ];
+  for (const [bw, bh, bd, bx, by, bz] of innerBars) {
+    const trim = new THREE.Mesh(track(new THREE.BoxGeometry(bw, bh, bd)), ghFrameInnerMat);
+    trim.position.set(bx, by, bz);
+    ghGroup.add(trim);
+  }
+
+  // 2. Художественный холст GitHub внутри рамы
+  const ghTex = track(githubArtTexture());
+  const ghCanvasMat = track(
+    new THREE.MeshStandardMaterial({
+      map: ghTex,
+      emissive: '#ffffff',
+      emissiveMap: ghTex,
+      emissiveIntensity: 0.62,
+      roughness: 0.42,
+      metalness: 0.12,
+    }),
+  );
+  const ghCanvas = new THREE.Mesh(track(new THREE.PlaneGeometry(3.1, 3.7)), ghCanvasMat);
+  ghCanvas.position.z = 0.045;
+  ghGroup.add(ghCanvas);
+
+  // 3. Центральный 3D-медальон (выступающий круглый пьедестал под логотипом Octocat)
+  const medallionCenterY = 0.35;
+  const medallionDisc = new THREE.Mesh(
+    track(new THREE.CylinderGeometry(1.02, 1.08, 0.09, 64)),
+    track(
+      new THREE.MeshStandardMaterial({
+        color: '#0d1117',
+        roughness: 0.32,
+        metalness: 0.55,
+        emissive: '#161b22',
+        emissiveIntensity: 0.35,
+      }),
+    ),
+  );
+  medallionDisc.rotation.x = Math.PI / 2;
+  medallionDisc.position.set(0, medallionCenterY, 0.09);
+  medallionDisc.castShadow = true;
+  medallionDisc.receiveShadow = true;
+  ghGroup.add(medallionDisc);
+
+  // Неоновое 3D-кольцо ореола вокруг медальона GitHub
+  const ghRingMat = track(
+    new THREE.MeshStandardMaterial({
+      color: '#58a6ff',
+      emissive: '#58a6ff',
+      emissiveIntensity: 0.75,
+      roughness: 0.2,
+      metalness: 0.8,
+    }),
+  );
+  const ghHaloRing = new THREE.Mesh(track(new THREE.TorusGeometry(1.06, 0.028, 20, 72)), ghRingMat);
+  ghHaloRing.position.set(0, medallionCenterY, 0.115);
+  ghGroup.add(ghHaloRing);
+
+  // 4. 3D-скульптурный барельеф логотипа GitHub Octocat (экструдированная геометрия с фаской)
+  const octoMat = track(
+    new THREE.MeshStandardMaterial({
+      color: '#f0f6fc',
+      emissive: '#dbeafe',
+      emissiveIntensity: 0.32,
+      roughness: 0.24,
+      metalness: 0.22,
+    }),
+  );
+
+  const octoGeo = track(
+    new THREE.ExtrudeGeometry(makeOctocatSilhouetteShape(), {
+      depth: 0.11,
+      bevelEnabled: true,
+      bevelThickness: 0.028,
+      bevelSize: 0.022,
+      bevelSegments: 4,
+      curveSegments: 32,
+    }),
+  );
+  const octoMesh = new THREE.Mesh(octoGeo, octoMat);
+  octoMesh.position.set(0, medallionCenterY - 0.02, 0.13);
+  octoMesh.castShadow = true;
+  ghGroup.add(octoMesh);
+
+  // Объёмный изогнутый 3D-хвост-щупальце Octocat слева от торса
+  const tailCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.18, medallionCenterY - 0.48, 0.18),
+    new THREE.Vector3(-0.38, medallionCenterY - 0.44, 0.195),
+    new THREE.Vector3(-0.52, medallionCenterY - 0.30, 0.205),
+    new THREE.Vector3(-0.66, medallionCenterY - 0.25, 0.21),
+    new THREE.Vector3(-0.77, medallionCenterY - 0.14, 0.21),
+  ]);
+  const tailGeo = track(new THREE.TubeGeometry(tailCurve, 28, 0.068, 16, false));
+  const tailMesh = new THREE.Mesh(tailGeo, octoMat);
+  tailMesh.castShadow = true;
+  ghGroup.add(tailMesh);
+
+  // Скруглённый кончик хвоста-щупальца
+  const tailTip = new THREE.Mesh(track(new THREE.SphereGeometry(0.068, 16, 14)), octoMat);
+  tailTip.position.set(-0.77, medallionCenterY - 0.14, 0.21);
+  ghGroup.add(tailTip);
+
+  // Объёмные детали мордочки Octocat на барельефе (глянцевые тёмные глаза и носик)
+  const octoFeatureMat = track(
+    new THREE.MeshStandardMaterial({
+      color: '#0d1117',
+      roughness: 0.18,
+      metalness: 0.45,
+    }),
+  );
+  const eyeGeo = track(new THREE.CapsuleGeometry(0.052, 0.05, 8, 14));
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(eyeGeo, octoFeatureMat);
+    eye.position.set(side * 0.21, medallionCenterY + 0.19, 0.255);
+    ghGroup.add(eye);
+
+    // Блик в глазах Octocat
+    const glint = new THREE.Mesh(
+      track(new THREE.SphereGeometry(0.018, 10, 8)),
+      octoMat,
+    );
+    glint.position.set(side * 0.21 + 0.018, medallionCenterY + 0.22, 0.295);
+    ghGroup.add(glint);
+  }
+
+  // 5. Объёмные 3D-кубики календаря контрибуций (GitHub Contributions Skyline) в нижней части картины
+  const contribColors = ['#0e4429', '#006d32', '#26a641', '#39d353'];
+  const contribBoxGeo = track(new THREE.BoxGeometry(0.11, 0.11, 1));
+  for (let col = 0; col < 14; col++) {
+    for (let row = 0; row < 2; row++) {
+      const lvl = (col * 5 + row * 9 + 3) % 4;
+      const depth = 0.04 + (lvl + 1) * 0.022;
+      const cMat = track(
+        new THREE.MeshStandardMaterial({
+          color: contribColors[lvl],
+          emissive: contribColors[lvl],
+          emissiveIntensity: 0.35 + lvl * 0.14,
+          roughness: 0.3,
+          metalness: 0.25,
+        }),
+      );
+      const cube = new THREE.Mesh(contribBoxGeo, cMat);
+      cube.scale.z = depth;
+      cube.position.set((col - 6.5) * 0.155, -1.42 - row * 0.155, 0.05 + depth * 0.5);
+      cube.castShadow = true;
+      ghGroup.add(cube);
+    }
+  }
+
+  // 6. Верхний галерейный светильник над 3D-картиной GitHub
+  const galleryLampArm = new THREE.Mesh(
+    track(new THREE.BoxGeometry(1.5, 0.05, 0.32)),
+    ghFrameOuterMat,
+  );
+  galleryLampArm.position.set(0, 2.08, 0.16);
+  ghGroup.add(galleryLampArm);
+
+  const ghLight = new THREE.PointLight('#79c0ff', 28, 8.5, 2);
+  ghLight.position.copy(ghWall.pos).multiplyScalar(0.92);
+  ghLight.position.y = 3.2;
+  roomGroup.add(ghLight);
+
   /* --- висячая лампа: шнур, абажур, светящаяся груша --- */
   const lampTheta = winTheta - 2.2;
   const lamp = onWall(lampTheta, R - 5.2);
@@ -233,6 +469,7 @@ export function buildRoom(scene: THREE.Scene): RoomHandle {
       attr.needsUpdate = true;
       dust.rotation.y = t * 0.012;
       lampLight.intensity = 160 + Math.sin(t * 7.3) * 9;
+      ghRingMat.emissiveIntensity = 0.72 + Math.sin(t * 2.2) * 0.18;
       cat.update(dt, t);
     },
     setBoard(board: Board, lastMove?: Move | null, selected?: Point | null): void {
