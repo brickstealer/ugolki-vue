@@ -8,10 +8,13 @@
  * update(dt) для анимации пыли и dispose() для освобождения ресурсов.
  */
 import * as THREE from 'three';
-import { posterTexture, wallpaperTexture, windowTexture, woodTexture } from './textures';
+import { createGame, type Board, type Move, type Point } from '@/core';
+import { buildMagicalCat } from './cat';
+import { createWallScreen, wallpaperTexture, windowTexture, woodTexture } from './textures';
 
 export interface RoomHandle {
   update(dt: number, t: number): void;
+  setBoard(board: Board, lastMove?: Move | null, selected?: Point | null): void;
   dispose(): void;
 }
 
@@ -76,11 +79,12 @@ export function buildRoom(scene: THREE.Scene): RoomHandle {
   rugEdge.position.y = FLOOR_Y + 0.02;
   roomGroup.add(rugEdge);
 
-  /* --- стол-пьедестал (столешница прямо под доской) --- */
+  /* --- стол-пьедестал (столешница прямо под доской, полностью из однородного полосатого дерева) --- */
   const tableTex = track(woodTexture('#3a2517', 'rgba(255,205,150,0.55)'));
+  tableTex.wrapS = THREE.RepeatWrapping;
+  tableTex.wrapT = THREE.RepeatWrapping;
   tableTex.repeat.set(2, 2);
   const woodMat = track(lowEnv(new THREE.MeshStandardMaterial({ map: tableTex, roughness: 0.55, metalness: 0.05 })));
-  const woodDark = track(lowEnv(new THREE.MeshStandardMaterial({ color: '#241609', roughness: 0.7 })));
 
   const top = new THREE.Mesh(track(new THREE.BoxGeometry(12.6, 0.55, 12.6)), woodMat);
   top.position.y = TABLE_TOP_Y - 0.275;
@@ -88,17 +92,21 @@ export function buildRoom(scene: THREE.Scene): RoomHandle {
   top.receiveShadow = true;
   roomGroup.add(top);
 
-  const apron = new THREE.Mesh(track(new THREE.BoxGeometry(11.2, 0.4, 11.2)), woodDark);
+  const apron = new THREE.Mesh(track(new THREE.BoxGeometry(11.2, 0.4, 11.2)), woodMat);
   apron.position.y = TABLE_TOP_Y - 0.75;
+  apron.castShadow = true;
+  apron.receiveShadow = true;
   roomGroup.add(apron);
 
-  const pedestal = new THREE.Mesh(track(new THREE.BoxGeometry(4.4, 1.1, 4.4)), woodDark);
+  const pedestal = new THREE.Mesh(track(new THREE.BoxGeometry(4.4, 1.1, 4.4)), woodMat);
   pedestal.position.y = -1.47;
   pedestal.castShadow = true;
+  pedestal.receiveShadow = true;
   roomGroup.add(pedestal);
 
-  const foot = new THREE.Mesh(track(new THREE.BoxGeometry(7.2, 0.16, 7.2)), woodDark);
+  const foot = new THREE.Mesh(track(new THREE.BoxGeometry(7.2, 0.16, 7.2)), woodMat);
   foot.position.y = FLOOR_Y + 0.09;
+  foot.receiveShadow = true;
   roomGroup.add(foot);
 
   /* --- окно с луной + холодный свет --- */
@@ -120,18 +128,41 @@ export function buildRoom(scene: THREE.Scene): RoomHandle {
   winGlow.position.multiplyScalar(0.82);
   roomGroup.add(winGlow);
 
-  /* --- постер «Уголки» на стене (слева от окна, виден и в портрете) --- */
+  /* --- настенный монитор «Уголки» (транслирует реальное состояние доски в реальном времени) --- */
   const artTheta = winTheta + 1.25;
   const art = onWall(artTheta);
-  const artTex = track(posterTexture());
-  const poster = new THREE.Mesh(
-    track(new THREE.PlaneGeometry(3.1, 3.7)),
-    track(lowEnv(new THREE.MeshStandardMaterial({ map: artTex, roughness: 0.85 }))),
+  const screen = createWallScreen();
+  disposables.push(screen);
+  screen.setBoard(createGame(), null, null);
+
+  // Корпус / тонкая рамка телевизора
+  const frame = new THREE.Mesh(
+    track(new THREE.BoxGeometry(3.24, 3.86, 0.08)),
+    track(new THREE.MeshStandardMaterial({ color: '#0b1118', roughness: 0.45, metalness: 0.65 })),
   );
-  poster.position.copy(art.pos);
-  poster.position.y = 1.6;
-  poster.rotation.y = art.ry;
-  roomGroup.add(poster);
+  frame.position.copy(art.pos);
+  frame.position.y = 1.6;
+  frame.rotation.y = art.ry;
+  roomGroup.add(frame);
+
+  // Светящаяся матрица экрана
+  const screenMat = track(
+    new THREE.MeshStandardMaterial({
+      map: screen.texture,
+      emissive: '#ffffff',
+      emissiveMap: screen.texture,
+      emissiveIntensity: 0.72,
+      roughness: 0.35,
+      metalness: 0.1,
+    }),
+  );
+  const display = new THREE.Mesh(track(new THREE.PlaneGeometry(3.1, 3.7)), screenMat);
+  display.position.copy(art.pos);
+  const forward = new THREE.Vector3(0, 0, 0.045).applyAxisAngle(new THREE.Vector3(0, 1, 0), art.ry);
+  display.position.add(forward);
+  display.position.y = 1.6;
+  display.rotation.y = art.ry;
+  roomGroup.add(display);
 
   /* --- висячая лампа: шнур, абажур, светящаяся груша --- */
   const lampTheta = winTheta - 2.2;
@@ -190,8 +221,11 @@ export function buildRoom(scene: THREE.Scene): RoomHandle {
 
   const attr = dustGeo.getAttribute('position') as THREE.BufferAttribute;
 
+  /* --- волшебный 3D-кот, рандомно гуляющий по комнате --- */
+  const cat = track(buildMagicalCat(roomGroup, FLOOR_Y));
+
   return {
-    update(_dt: number, t: number): void {
+    update(dt: number, t: number): void {
       for (let i = 0; i < COUNT; i++) {
         const y = basePos[i * 3 + 1] + Math.sin(t * (0.25 + (i % 7) * 0.05) + i * 1.7) * 0.35;
         attr.setY(i, y);
@@ -199,6 +233,10 @@ export function buildRoom(scene: THREE.Scene): RoomHandle {
       attr.needsUpdate = true;
       dust.rotation.y = t * 0.012;
       lampLight.intensity = 160 + Math.sin(t * 7.3) * 9;
+      cat.update(dt, t);
+    },
+    setBoard(board: Board, lastMove?: Move | null, selected?: Point | null): void {
+      screen.setBoard(board, lastMove, selected);
     },
     dispose(): void {
       scene.remove(roomGroup);

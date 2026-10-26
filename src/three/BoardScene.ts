@@ -11,13 +11,13 @@
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { BOT, HUMAN, HOME, N, TARGET, idx, inZone, type Board, type Move, type Point, type Side } from '@/core';
+import { BOT, HUMAN, HOME, N, TARGET, idx, inZone, createGame, EMPTY, type Board, type Move, type Point, type Side } from '@/core';
 import { PieceFactory } from './pieces';
 import { buildRoom, type RoomHandle } from './room';
 
 export type SceneSound = 'step' | 'hop' | 'land' | 'select';
 
-const HALF = 4.5;
+const HALF = (N - 1) / 2;
 const TILE_TOP = 0.14;
 const PIECE_Y = 0.15; // низ шашки (фигура начинается от дна)
 
@@ -65,6 +65,11 @@ export class BoardScene {
   private lastMs = 0;
   private disposed = false;
   private readonly fitTimers: number[] = [];
+
+  // синхронизация с настенным экраном
+  private currentBoard: Board = createGame();
+  private lastMove: Move | null = null;
+  private selectedPoint: Point | null = null;
 
   // ввод
   private readonly ptr = new Map<number, { x: number; y: number }>();
@@ -238,9 +243,27 @@ export class BoardScene {
 
   /* ---------- синхронизация с моделью ---------- */
 
+  private isStartGame(b: Board): boolean {
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const p = b[idx(r, c)];
+        if (inZone(r, c, HOME[BOT]) && p !== BOT) return false;
+        if (inZone(r, c, HOME[HUMAN]) && p !== HUMAN) return false;
+        if (!inZone(r, c, HOME[BOT]) && !inZone(r, c, HOME[HUMAN]) && p !== EMPTY) return false;
+      }
+    }
+    return true;
+  }
+
   /** Мгновенная синхронизация шашек с доской. Отменяет незавершённую анимацию. */
   setBoard(board: Board): void {
     if (this.disposed) return;
+    this.currentBoard = board;
+    if (this.isStartGame(board)) {
+      this.lastMove = null;
+      this.selectedPoint = null;
+    }
+    this.room.setBoard(board, this.lastMove, this.selectedPoint);
     this.cancelAnimation();
     const alive = new Set<number>();
     for (let r = 0; r < N; r++) {
@@ -249,6 +272,11 @@ export class BoardScene {
         if (!p) continue;
         const k = idx(r, c);
         alive.add(k);
+        const existing = this.pieces.get(k);
+        if (existing && existing.userData.side !== p) {
+          this.scene.remove(existing);
+          this.pieces.delete(k);
+        }
         if (!this.pieces.has(k)) {
           const group = this.makePiece(p as Side);
           this.placePiece(group, r, c);
@@ -264,9 +292,17 @@ export class BoardScene {
     }
   }
 
+  /** Поворот камеры к домашнему углу игрока (1 — голубые, 2 — оранжевые). */
+  setPerspective(side: Side): void {
+    const baseYaw = innerHeight > innerWidth * 1.12 ? 0 : Math.PI / 4;
+    this.cam.yaw = side === 2 ? baseYaw + Math.PI : baseYaw;
+  }
+
   /** Кольцо выбора + точки/кольца доступных ходов. */
   showSelection(sel: Point | null, moves: Map<number, Move>): void {
     if (this.disposed) return;
+    this.selectedPoint = sel;
+    this.room.setBoard(this.currentBoard, this.lastMove, sel);
     if (!sel) {
       this.selRing.visible = false;
       this.dots.count = 0;
@@ -313,6 +349,9 @@ export class BoardScene {
    */
   animateMove(mv: Move, side: Side): Promise<void> {
     if (this.disposed) return Promise.resolve();
+    this.lastMove = mv;
+    this.selectedPoint = null;
+    this.room.setBoard(this.currentBoard, mv, null);
     this.cancelAnimation();
     const key = idx(mv.to.r, mv.to.c);
     const fromKey = idx(mv.from.r, mv.from.c);

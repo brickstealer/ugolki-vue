@@ -23,11 +23,13 @@ onMounted(() => {
     else sfx.select();
   };
   game.attachAnimator(scene);
+  scene.setPerspective(game.mySide.value);
   scene.setBoard(game.board.value);
   syncSelection();
 });
 
 watch(() => game.board.value, (b) => scene?.setBoard(b));
+watch(() => game.mySide.value, (side) => scene?.setPerspective(side));
 watch(() => [game.selected.value, game.movesByCell.value], syncSelection);
 
 onBeforeUnmount(() => {

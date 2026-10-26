@@ -2,6 +2,7 @@
    HUD (pill/seg/status/stat/bar/toast/modal), которыми делятся компоненты. */
 
 :root {
+  color-scheme: dark;
   --bg: #0b0e13;
   --fg: #e9eef6;
   --muted: #8593a8;
@@ -277,15 +278,32 @@ html, body {
 
 .card {
   width: 100%;
-  max-width: 410px;
-  max-height: min(82vh, 620px);
-  overflow: auto;
+  max-width: 440px;
+  max-height: min(90vh, 720px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
   touch-action: pan-y;
   background: linear-gradient(180deg, rgba(23, 30, 40, 0.97), rgba(13, 18, 25, 0.97));
   border: 1px solid var(--line);
   border-radius: 22px;
-  padding: 22px;
+  padding: 20px 22px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+}
+.card::-webkit-scrollbar {
+  width: 5px;
+}
+.card::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 14px 0;
+}
+.card::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+}
+.card::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 .card h2 {
   margin: 0 0 4px;
